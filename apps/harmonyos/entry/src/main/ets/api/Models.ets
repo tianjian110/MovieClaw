@@ -675,6 +675,8 @@ export interface ClientCapabilityIn {
   dolby_vision_base_layer_profiles?: number[] | null
   /// 自己能画内封 PGS：选中 PGS 不再触发服务端发烧录（0.48 起生效，老服务器忽略）
   pgs_overlay?: boolean | null
+  /// 硬件转码时能接 HEVC 输出（fMP4、hvc1、8-bit Main），且播放器实现了回退
+  hevc_transcode?: boolean | null
 }
 
 export interface CloudConnectionView {

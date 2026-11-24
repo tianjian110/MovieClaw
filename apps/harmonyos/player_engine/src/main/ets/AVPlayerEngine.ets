@@ -3,6 +3,7 @@ import { audio } from '@kit.AudioKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { EngineEvent, EngineFailure, EngineSource, EngineTrack, PlayerEngine, SubtitleStyle } from './PlayerEngine';
+import { HdrCapabilityProbe } from './HdrCapabilityProbe';
 
 /** No UI, server sessions or library IDs cross this adapter. */
 export class AVPlayerEngine implements PlayerEngine {
@@ -76,6 +77,12 @@ export class AVPlayerEngine implements PlayerEngine {
       if (this.released) { return; }
       if (state === 'initialized') {
         player.surfaceId = surfaceId;
+        if (HdrCapabilityProbe.hdrPassthrough) {
+          const strategy: media.PlaybackStrategy = { preferredHdr: true };
+          player.setPlaybackStrategy(strategy).catch((err: BusinessError): void => {
+            hilog.warn(0x0000, 'MCSub', 'setPlaybackStrategy failed: %{public}d', err.code);
+          });
+        }
         this.prepare(source).catch((error: BusinessError): void => {
           // prepare() can reject with 5400102 before the error callback supplies the
           // actual decoder/format failure. Preserve that callback for fallback policy.

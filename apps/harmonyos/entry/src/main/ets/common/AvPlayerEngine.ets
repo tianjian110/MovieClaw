@@ -35,6 +35,8 @@ import { http } from '@kit.NetworkKit';
 import { image } from '@kit.ImageKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { display } from '@kit.ArkUI';
+import { hdrCapability } from '@kit.ArkGraphics2D';
 import { AppModel } from './AppModel';
 import { MovieClawApi } from '../api/Endpoints';
 import { ApiError } from '../api/ApiClient';
@@ -168,6 +170,9 @@ class CarCapability implements ClientCapabilityIn {
   is_mobile?: boolean | null;
   native_hls?: boolean | null;
   universal?: boolean | null;
+  dolby_vision_profiles?: number[] | null;
+  dolby_vision_base_layer_profiles?: number[] | null;
+  hevc_transcode?: boolean | null;
 }
 
 class CarVideoSupport implements VideoSupportIn {
@@ -890,11 +895,28 @@ export class AvPlayerEngine {
     mp3.codec = 'mp3';
     cap.audio = [aac, mp3];
     cap.containers = ['mp4', 'mkv', 'ts'];
-    // 杜比视界透传：AVCodec 未列 DV profile/RPU，明确报 false 让服务端走转码
-    cap.hdr_passthrough = false;
+    let hdrFormats: hdrCapability.HDRFormat[] = [];
+    try {
+      const disp = display.getDefaultDisplaySync();
+      hdrFormats = disp.hdrFormats ?? [];
+    } catch (error) {
+      hdrFormats = [];
+    }
+    const hdrPassthrough: boolean = hdrFormats.length > 0;
+    const dvProfiles: number[] = [];
+    const dvBaseProfiles: number[] = [];
+    for (const fmt of hdrFormats) {
+      if (fmt === hdrCapability.HDRFormat.VIDEO_HDR_VIVID) {
+        dvProfiles.push(8);
+        dvBaseProfiles.push(8);
+      }
+    }
+    cap.hdr_passthrough = hdrPassthrough;
+    cap.dolby_vision_profiles = dvProfiles.length > 0 ? dvProfiles : undefined;
+    cap.dolby_vision_base_layer_profiles = dvBaseProfiles.length > 0 ? dvBaseProfiles : undefined;
+    cap.hevc_transcode = true;
     cap.is_mobile = false;
     cap.native_hls = true;
-    // 同既有端：mse 必须是字符串 "full"，传 null 会 422
     cap.mse = 'full';
     return cap;
   }
@@ -965,6 +987,19 @@ export class AvPlayerEngine {
       if (state === 'initialized') {
         this.armWatchdog();
         player.surfaceId = this.surfaceId;
+        let hdrFormats: hdrCapability.HDRFormat[] = [];
+        try {
+          const disp = display.getDefaultDisplaySync();
+          hdrFormats = disp.hdrFormats ?? [];
+        } catch (error) {
+          hdrFormats = [];
+        }
+        if (hdrFormats.length > 0) {
+          const strategy: media.PlaybackStrategy = { preferredHdr: true };
+          player.setPlaybackStrategy(strategy).catch((err: BusinessError): void => {
+            hilog.warn(0x0000, 'CarFlow', 'setPlaybackStrategy failed: %{public}d', err.code);
+          });
+        }
         player.prepare();
       } else if (state === 'prepared') {
         if (player.duration > 0) {

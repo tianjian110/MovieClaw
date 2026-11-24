@@ -11,6 +11,7 @@ import { PlaybackGuard } from '@movieclaw/playback';
 import { PlayerPrefs, SubStyle } from '../player/PlayerPrefs';
 import { PlaybackController, PlaybackSnapshot, PlaybackIntent, PlaybackSessionCoordinator, PlaybackOwnership, SkipSegments, SubtitleCue, parseSubtitleCues, subtitleCueTextAt, assToSrt } from '@movieclaw/playback';
 import { EngineEvent, EngineFailure, EngineSource, DefaultEngineFactory } from '@movieclaw/player-engine';
+import { HdrCapabilityProbe } from '@movieclaw/player-engine';
 import { PhoneMedia, playbackUrl, downloadPgsSidecar, removePgsSidecar, PgsSidecarCache, DownloadedSubtitle, readSubtitleTextFile } from './PhoneMedia';
 import { MpvTrust } from './MpvTrust';
 import { PgsPrepareGuard, PgsPrepareTracker } from './PgsPrepareGuard';
@@ -425,6 +426,7 @@ export class PhonePlaybackHost implements PlaybackTestHost {
   @Trace enginePixel: string = '';
   @Trace engineWidth: number = 0;
   @Trace engineHeight: number = 0;
+  @Trace isHdrActive: boolean = false;
 
   // —— 自绘字幕样式（本机外挂轨；流式轨由系统渲染改不了，iOS SubtitleStyle）——
   @Trace subFontScale: number = 5.2;
@@ -503,6 +505,7 @@ export class PhonePlaybackHost implements PlaybackTestHost {
     this.restoreBrightness();
     this.allowScreenOff();
     this.restoreOrientation();
+    this.disableHdrOutput().catch((): void => {});
     this.disarmHoldTimer();
     this.disarmAdjustHide();
     this.stopAutoNextClock();
@@ -647,6 +650,13 @@ export class PhonePlaybackHost implements PlaybackTestHost {
       this.sessionCoordinator.bind(new MovieClawPlaybackSession(api, view,
         new PlayerParams(this.mediaItemId, view.decision.file_id ?? 0, this.seasonNumber,
           this.episodeNumber, view.start_ms, this.shareSlug, this.clipStartMs, this.clipEndMs)));
+      if (HdrCapabilityProbe.hdrPassthrough && (view.decision.tier ?? 0) === 0
+        && view.decision.video !== null && view.decision.video !== undefined
+        && !view.decision.video.tone_map) {
+        this.enableHdrOutput().catch((): void => {});
+      } else {
+        this.disableHdrOutput().catch((): void => {});
+      }
       this.loadItemInfo();
       this.loadEpisodes();
       this.loadTrickplay();
@@ -706,6 +716,9 @@ export class PhonePlaybackHost implements PlaybackTestHost {
     this.viewingRecorder = new OfflineViewingRecorder(unit, resumeMs,
       spec.durationMs ?? null, this.api());
     this.phase = PlayerPhase.ready;
+    if (HdrCapabilityProbe.hdrPassthrough) {
+      this.enableHdrOutput().catch((): void => {});
+    }
     this.loadItemInfo();
     this.loadEpisodes();
     this.startAutoNextClock();
@@ -857,6 +870,23 @@ export class PhonePlaybackHost implements PlaybackTestHost {
     if (this.engineCodec.length > 0) { parts.push(this.engineCodec); }
     if (this.enginePixel.length > 0) { parts.push(this.enginePixel); }
     return parts.length === 0 ? '' : `解码规格：${parts.join(' · ')}`;
+  }
+
+  /** 诊断面板 HDR 状态行 */
+  hdrLine(): string {
+    if (!HdrCapabilityProbe.hdrPassthrough) { return 'HDR：本机不支持'; }
+    const formats: string[] = [];
+    for (const fmt of HdrCapabilityProbe.hdrFormats) {
+      if (fmt === 2) { formats.push('HDR10'); }
+      else if (fmt === 1) { formats.push('HLG'); }
+      else if (fmt === 3) { formats.push('HDR Vivid'); }
+    }
+    const active: string = this.isHdrActive ? ' · HDR 已启用' : '';
+    return `HDR：${formats.join(' / ')}${active}`;
+  }
+
+  get hdrBrightness(): number {
+    return this.isHdrActive ? 1.0 : 0.0;
   }
 
   surfaceReady(generation: number): void {
@@ -2573,6 +2603,33 @@ export class PhonePlaybackHost implements PlaybackTestHost {
       this.brightnessTouched = true;
     }).catch((): void => {
     });
+  }
+
+  async enableHdrOutput(): Promise<void> {
+    if (!HdrCapabilityProbe.hdrPassthrough || this.isHdrActive) { return; }
+    const context: common.Context | undefined = this.hostContext();
+    if (context === undefined) { return; }
+    try {
+      const win: window.Window = this.brightnessWindow ?? await window.getLastWindow(context);
+      if (this.brightnessWindow === null) { this.brightnessWindow = win; }
+      await win.setWindowColorSpace(window.ColorSpace.WIDE_GAMUT);
+      this.isHdrActive = true;
+      hilog.info(0x0000, 'MCSub', 'HDR: 窗口色彩空间切换 WIDE_GAMUT');
+    } catch (error) {
+      hilog.warn(0x0000, 'MCSub', 'HDR: setWindowColorSpace WIDE_GAMUT failed');
+    }
+  }
+
+  async disableHdrOutput(): Promise<void> {
+    if (!this.isHdrActive) { return; }
+    const win: window.Window | null = this.brightnessWindow;
+    if (win === null) { this.isHdrActive = false; return; }
+    try {
+      await win.setWindowColorSpace(window.ColorSpace.DEFAULT);
+    } catch (error) {
+      hilog.warn(0x0000, 'MCSub', 'HDR: setWindowColorSpace DEFAULT failed');
+    }
+    this.isHdrActive = false;
   }
 
   /** 退出播放器恢复跟随系统（iOS 退出时恢复进入前的系统亮度，这里传 -1 是等价动作） */

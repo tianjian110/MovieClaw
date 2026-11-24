@@ -1,6 +1,7 @@
 import { MovieClawApi } from '../api/Endpoints';
 import { ClientCapabilityIn, PlaybackSessionRequest, PlaybackSessionView, PlaybackDecisionView, PlaybackDecideRequest,
   VideoSupportIn, AudioSupportIn } from '../api/Models';
+import { HdrCapabilityProbe } from '@movieclaw/player-engine';
 
 /** Existing-server adapter. Each candidate is evaluated independently, never unioned. */
 export class MovieClawPlaybackGateway {
@@ -12,12 +13,14 @@ export class MovieClawPlaybackGateway {
       'pcm_s16le', 'pcm_s24le', 'pcm_bluray', 'pcm_dvd'] : ['aac', 'mp3'];
     for (const codec of videos) { video.push({ codec: codec, max_height: 2160 }); }
     for (const codec of audios) { audio.push({ codec: codec }); }
+    const dvProfiles: number[] = HdrCapabilityProbe.dolbyVisionProfiles;
+    const dvBaseProfiles: number[] = HdrCapabilityProbe.dolbyVisionBaseLayerProfiles;
     return { video: video, audio: audio, containers: engine === 'mpv'
       ? ['mp4', 'mkv', 'ts', 'avi', 'mov', 'webm', 'flv'] : ['mp4', 'mkv', 'ts'],
-      local_tracks: true, hdr_passthrough: false, mse: 'full', native_hls: true, is_mobile: true, universal: false,
-      // B 方案：未烧录 PGS 由本端渲染——tier-0 直连走 mpv 原生内封 sid，其余档
-      // 下载 .sup 旁挂后按次强制 mpv 渲染（对齐 0.49 网页/Android 的本地渲染
-      // 路线）。申报是 app 级能力，与本次协商的投递引擎无关。
+      local_tracks: true, hdr_passthrough: HdrCapabilityProbe.hdrPassthrough,
+      dolby_vision_profiles: dvProfiles.length > 0 ? dvProfiles : undefined,
+      dolby_vision_base_layer_profiles: dvBaseProfiles.length > 0 ? dvBaseProfiles : undefined,
+      hevc_transcode: true, mse: 'full', native_hls: true, is_mobile: true, universal: false,
       pgs_overlay: pgsOverlay };
   }
   private api: MovieClawApi;

@@ -49,12 +49,13 @@ export class TabBarCollapse {
       this.collapsed = false;
       this.direction = 0;
       this.distance = 0;
+      this.endTop = -1;
       return;
     }
     /*
      * 滑到内容最底：底下已没有内容，下一步多半是换页签/离开本页——放回整条底栏；
-     * 记下最底位置（endTop，取最小的，橡皮筋过冲不算），方向累计清零，离开底部后
-     * 重新起算（下滑重新累计 6 才再收起）。
+     * 记下最底位置（endTop，取最小的，橡皮筋过冲不算），方向与累计清零，离开底部
+     * 后重新起算（下滑重新累计 6 才再收起）。
      */
     if (atEnd) {
       if (this.endTop < 0 || top < this.endTop) {
@@ -64,6 +65,7 @@ export class TabBarCollapse {
         this.collapsed = false;
       }
       this.distance = 0;
+      this.direction = 0;
       return;
     }
     if (dy === 0) { return; }
@@ -92,6 +94,7 @@ export class TabBarCollapse {
   expand(): void {
     this.collapsed = false;
     this.lastTop = -1;
+    this.endTop = -1;
     this.direction = 0;
     this.distance = 0;
   }

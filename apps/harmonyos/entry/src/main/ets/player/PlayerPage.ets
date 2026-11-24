@@ -361,7 +361,7 @@ export struct PlayerPage {
           })
             .hitTestBehavior(HitTestMode.Transparent)
             .id('player-surface')
-            .hdrBrightness(0.0)
+            .hdrBrightness(this.host.hdrBrightness)
             /*
              * **按视频比例摆放**：surface 是个画布，播放器会把画面铺满它——
              * 给全屏尺寸就会把 16:9 的片子拉成竖屏（实测过：测试图的圆变成了竖椭圆）。
@@ -1514,6 +1514,9 @@ export struct PlayerPage {
                   .fontSize(12)
                   .fontColor(Theme.textMuted)
               }
+              Text(this.host.hdrLine()).id('player-diag-hdr')
+                .fontSize(12)
+                .fontColor(Theme.textMuted)
               Text(`容器 ${(this.host.session as PlaybackSessionView).decision.container ?? '—'}  ·  `
                 + `档位 ${(this.host.session as PlaybackSessionView).decision.tier ?? 0}`)
                 .fontSize(13)
@@ -1575,7 +1578,9 @@ export struct PlayerPage {
                   .fontSize(12)
                   .fontColor(Theme.textMuted)
               }
-              Text('没有服务端播放会话：原文件直出或本机副本，不产生转码')
+              Text(this.host.hdrLine())
+                .fontSize(12)
+                .fontColor(Theme.textMuted)
                 .fontSize(12)
                 .fontColor(Theme.textMuted)
                 .width('100%')

@@ -4,10 +4,10 @@
 在 HarmonyOS 设备上使用 AVPlayer（底层 HiStreamer 引擎）播放特定编码格式的视频时，暂停后恢复播放会导致 MediaDemuxer 线程异常退出，画面冻结（时钟停滞），而 AVPlayer 状态仍报告 `playing`。同一设备上播放 HEVC 编码视频时，暂停恢复正常，问题不复现。
 
 ## 复现环境
-- **设备**: HUAWEI VDE-AL10 (Pura 70 Pro), HarmonyOS 5.0
+- **设备**: HUAWEI Pura X, HarmonyOS 7
 - **应用**: 自研播放器 io.movieclaw.HUAWEI，使用系统 AVPlayer API
 - **播放模式**: HTTP 拉流直出（档位0，files/{id}/stream），AVPlayer + HiStreamer 引擎
-- **SDK**: OpenHarmony SDK (DevEco Studio)
+- **SDK**: HarmonyOS NEXT SDK API 26 (DevEco Studio)
 
 ## 复现步骤
 1. 将 H.264 + AAC 编码的 MKV 视频通过 HTTP 直出方式提供给 AVPlayer

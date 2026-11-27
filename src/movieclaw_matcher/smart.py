@@ -9,7 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from movieclaw_matcher.models import QualitySnapshot, TorrentCandidate, UpgradeSource
 
-ALGORITHM_VERSION = 1
+ALGORITHM_VERSION = 2
+SEEDERS_FLOOR = 3
 SOURCE_RANK = {
     "hdtv": 1,
     "dvd": 1,
@@ -43,7 +44,7 @@ class SmartPreferences(BaseModel):
 
 
 class SmartPolicy(SmartPreferences):
-    algorithm_version: Literal[1] = ALGORITHM_VERSION
+    algorithm_version: Literal[2] = ALGORITHM_VERSION
     profile_revision: int = Field(ge=1)
     kind: Literal["movie", "tv"]
     # 看得懂的语言（smart_memory.LANGUAGE_KEYS 的键）。非空 = 作品语言看不懂，资源的
@@ -224,14 +225,19 @@ def decide(
         base = [c for c in base if is_upgrade(c.attrs, current, policy)]
 
     # 确定性排序；免费与镜像数量不作为品质或可靠性的证据。
+    # 同品质档（分辨率+片源）内做种存活度优先于覆盖与可靠性：
+    # 做种过低的源即使覆盖更广也未必下得动，先保证可下载性。
     def order(c: TorrentCandidate) -> tuple:
+        qv = quality_vector(c.attrs)
+        seeders = c.seeders
         return (
-            -(quality_vector(c.attrs)[0] or 0),
-            -(quality_vector(c.attrs)[1] or 0),
+            -(qv[0] or 0),
+            -(qv[1] or 0),
+            0 if (seeders is None or seeders >= SEEDERS_FLOOR) else 1,
+            -(seeders or 0),
             -(coverage or {}).get(candidate_key(c), [0, 0])[0],
             -(reliability or {}).get(series_key(c), 0),
             -(coverage or {}).get(candidate_key(c), [0, 0])[1],
-            -(c.seeders or 0),
             series_key(c) or "",
             candidate_key(c),
         )
@@ -415,8 +421,8 @@ def decide(
     group_count, resource_count = (coverage or {}).get(candidate_key(chosen), [1, 1])
     verified = (reliability or {}).get(series_key(chosen), 0)
     state.choice_explanation = (
-        "优先分辨率与片源；同品质延续跟随版本，再比较版本覆盖、核验记录、"
-        "单包覆盖和做种数；仍相同时按固定标识选择。"
+        "优先分辨率与片源；同品质档内做种存活度优先（低于阈值视为濒死），"
+        "再比较版本覆盖、核验记录和单包覆盖；仍相同时按固定标识选择。"
         f"本版本覆盖 {group_count} 集，本资源拟覆盖 {resource_count} 集；"
         + (
             f"有 {verified} 集成功核验记录。"

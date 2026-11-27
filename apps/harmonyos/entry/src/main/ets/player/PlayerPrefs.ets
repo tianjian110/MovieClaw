@@ -37,7 +37,6 @@ export class PlayerPrefs {
       const raw: string = await store.get('player.engine.v2', 'auto') as string;
       PlayerPrefs.engineName = raw === 'avplayer' || raw === 'mpv' ? raw : 'auto';
     } catch (error) {
-      // 读不到使用自动模式
     }
     return PlayerPrefs.engineName;
   }

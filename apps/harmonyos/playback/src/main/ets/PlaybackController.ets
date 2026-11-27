@@ -336,6 +336,15 @@ export class PlaybackController {
       }
       return;
     }
+    // 手动选择内核时，播放失败不自动切换，提示用户手动换引擎。
+    if (this.preference !== 'auto' && failure.canFallback()) {
+      const other = id === 'avplayer' ? 'MPV' : 'AVPlayer';
+      const hint = `${failure.message}（当前使用${id === 'avplayer' ? 'AVPlayer' : 'MPV'}内核，可前往设置切换至${other}内核重试）`;
+      const reported = new EngineFailure(failure.kind, failure.code, hint);
+      this.switching = false; this.snapshot.phase = 'failed'; this.snapshot.playing = false; this.snapshot.buffering = false;
+      this.snapshot.failure = reported; this.publish(); this.onFailure(reported);
+      return;
+    }
     // mpv 结构性不可用（x86_64 模拟器 libmpv 为 stub，init 必败；真机/ARM64 不
     // 会走到）：冻结救援/拖动转换撞上它时重试无意义，也绝不升级成终态报错废掉
     // 整个会话——记住不可用，按当前记忆位置回退会话重开（宿主 renegotiate 后
@@ -380,6 +389,15 @@ export class PlaybackController {
       await this.recover(new EngineFailure('decode', 0, '视频画面反复卡死，已停止自动恢复'), generation, id);
       return;
     }
+    // 手动选择内核时，冻结不自动切换到另一个引擎，改为报错提示手动切换。
+    if (this.preference !== 'auto') {
+      const other = id === 'avplayer' ? 'MPV' : 'AVPlayer';
+      hilog.error(0x0000, 'MCSub', '视频冻结，手动内核模式不自动切换: engine=%{public}s position=%{public}d',
+        id, positionMs);
+      const hint = `视频画面卡死（当前使用${id === 'avplayer' ? 'AVPlayer' : 'MPV'}内核，可前往设置切换至${other}内核重试）`;
+      await this.recover(new EngineFailure('decode', 0, hint), generation, id);
+      return;
+    }
     hilog.error(0x0000, 'MCSub', '视频冻结，就地重开恢复: engine=mpv position=%{public}d 第 %{public}d 次',
       positionMs, this.frozenRecoveries);
     const notice = new EngineEvent();
@@ -420,6 +438,14 @@ export class PlaybackController {
    * 走 mpv 原生 seek，不再经过这里。
    */
   private async recoverDragToMpv(generation: number, id: EngineId): Promise<void> {
+    // 手动选择 avplayer 时，远程直链拖动不自动转 mpv，回退会话重开。
+    if (this.preference !== 'auto') {
+      hilog.info(0x0000, 'MCSub', 'avplayer 远程直链拖动，手动内核模式不转 mpv，回退会话重开: position=%{public}d',
+        this.intent.positionMs);
+      this.switching = false;
+      this.onSeekOutsideWindow(this.intent.positionMs);
+      return;
+    }
     hilog.info(0x0000, 'MCSub', 'avplayer 远程直链拖动，转 mpv 重开: position=%{public}d',
       this.intent.positionMs);
     const notice = new EngineEvent();
